@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Immersive Reader — Stack Demo</title>
+
+<!-- Tailwind CSS — pre-built by Tailwind CLI, no browser compiler -->
+<link rel="stylesheet" href="style.css">
+
+<!-- ALPINE JS (CDN — in prod this is your existing Alpine setup) -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  /* Non-Tailwind styles: word highlight animation & bionic reading */
+  .word-span {
+    display: inline;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 1px 1px;
+    transition: background 0.08s;
+  }
+  .word-span:hover  { background: #fff5b0; }
+  .word-span.active { background: #ffe566; }
+
+  /* Bionic reading — toggled by Alpine class binding */
+  .bionic .bio-bold { font-weight: 700; }
+  .bionic .bio-rest { font-weight: 400; }
+
+  /* Speed modal slide-up */
+  @keyframes slideUp {
+    from { transform: translateY(60px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .slide-up { animation: slideUp 0.25s cubic-bezier(.32,1.2,.5,1); }
+
+  /* Progress thumb */
+  .progress-thumb {
+    position: absolute; top: 50%; transform: translate(-50%,-50%);
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #1a1a1a; pointer-events: none;
+  }
+</style>
+</head>
+
+<body class="bg-parchment font-sans min-h-screen flex flex-col"
+      x-data="immersiveReader()"
+      x-init="init()">
+
+<!-- ═══════════════════════════════════════════
+     TOP BAR
+═══════════════════════════════════════════ -->
+<header class="bg-cream border-b border-border sticky top-0 z-50 shadow-[0_1px_0_#e0dbd3]">
+  <div class="flex items-center justify-between h-[50px] px-5">
+
+    <!-- Left: Exit -->
+    <button class="flex items-center gap-1.5 text-[11px] font-semibold tracking-widest text-muted uppercase hover:text-ink transition-colors">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Exit Book
+    </button>
+
+    <!-- Centre: Book title -->
+    <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm font-medium text-ink pointer-events-none">
+      <svg class="w-4 h-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      </svg>
+      Always here for you
+    </div>
+
+    <!-- Right: Help -->
+    <button class="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:bg-border hover:text-ink transition-all">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </button>
+
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     SUB NAV
+═══════════════════════════════════════════ -->
+<nav class="bg-cream border-b border-border sticky top-[50px] z-40 flex items-center justify-between h-[38px] px-5">
+  <div class="flex">
+    <span class="text-[10px] font-semibold tracking-widest text-muted uppercase px-3.5 h-[38px] flex items-center cursor-pointer hover:text-ink transition-colors">Activities</span>
+    <span class="text-[10px] font-semibold tracking-widest text-muted uppercase px-3.5 h-[38px] flex items-center cursor-pointer hover:text-ink transition-colors">Notes</span>
+    <span class="text-[10px] font-semibold tracking-widest text-muted uppercase px-3.5 h-[38px] flex items-center cursor-pointer hover:text-ink transition-colors">Settings</span>
+  </div>
+  <div class="flex items-center gap-1">
+    <!-- Bionic reading toggle -->
+    <button @click="toggleBionic()"
+            :class="bionic ? 'bg-yellow-100 text-yellow-800' : 'text-muted hover:bg-border hover:text-ink'"
+            class="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-all"
+            title="Toggle Bionic Reading">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+    <!-- Search -->
+    <button class="w-[30px] h-[30px] flex items-center justify-center rounded-md text-muted hover:bg-border hover:text-ink transition-all">
+      <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </button>
+    <!-- Immersive panel toggle -->
+    <button @click="panelOpen = !panelOpen"
+            :class="panelOpen ? 'bg-yellow-100 text-yellow-800' : 'text-muted hover:bg-border hover:text-ink'"
+            class="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-all"
+            title="Immersive Reader">
+      <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+    </button>
+    <button class="w-[26px] h-[26px] flex items-center justify-center rounded-md border-[1.5px] border-border bg-white text-muted hover:border-ink hover:text-ink transition-all ml-2 text-base">+</button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+     BOOK PAGE
+═══════════════════════════════════════════ -->
+<main class="flex-1 flex justify-center px-6 py-12 pb-36">
+  <article class="bg-white w-[680px] max-w-full px-[76px] py-[60px] shadow-[0_2px_24px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] rounded-sm min-h-[640px]">
+
+    <!-- Chapter heading -->
+    <p class="text-center font-serif text-[13px] italic text-muted mb-1.5 tracking-[0.02em]">Madison and The Bezzies</p>
+    <h1 class="text-center font-serif text-[30px] font-bold text-ink leading-tight mb-11">A New Beginning</h1>
+
+    <!-- Book text — Alpine controls bionic class -->
+    <div id="bookText"
+         :class="bionic ? 'bionic' : ''"
+         class="font-serif text-[16.5px] leading-[1.88] text-ink text-justify">
+
+      <!-- Paragraphs are injected by Alpine x-init -->
+      <p id="p0" class="mb-0"></p>
+      <p id="p1" class="mb-0 mt-4 indent-8"></p>
+      <p id="p2" class="mb-0 mt-4 indent-8"></p>
+      <p id="p3" class="mb-0 mt-4 indent-8"></p>
+      <p id="p4" class="mb-0 mt-4 indent-8"></p>
+      <p id="p5" class="mb-0 mt-4 indent-8"></p>
+      <p id="p6" class="mb-0 mt-4 indent-8"></p>
+      <p id="p7" class="mb-0 mt-4 indent-8"></p>
+
+    </div>
+
+    <p class="text-center font-serif text-sm text-muted mt-11 tracking-[0.05em]">~ 10 ~</p>
+  </article>
+</main>
+
+<!-- ═══════════════════════════════════════════
+     BOTTOM BAR
+═══════════════════════════════════════════ -->
+<footer class="fixed bottom-0 left-0 right-0 bg-[#f0ede8] border-t border-border z-40">
+
+  <!-- READ / LISTEN tabs -->
+  <div class="flex border-b border-border">
+    <button @click="tab = 'read'"
+            :class="tab === 'read' ? 'text-ink border-ink' : 'text-muted border-transparent hover:text-ink'"
+            class="flex-1 text-[11px] font-semibold tracking-widest uppercase py-2.5 border-b-2 -mb-px transition-all">
+      Read
+    </button>
+    <button @click="tab = 'listen'"
+            :class="tab === 'listen' ? 'text-ink border-ink' : 'text-muted border-transparent hover:text-ink'"
+            class="flex-1 text-[11px] font-semibold tracking-widest uppercase py-2.5 border-b-2 -mb-px transition-all">
+      Listen
+    </button>
+  </div>
+
+  <!-- Listen player (shown only in listen tab) -->
+  <div x-show="tab === 'listen'" x-transition class="flex flex-col">
+
+    <!-- Progress bar -->
+    <div class="px-5 pt-3 flex flex-col gap-1.5">
+      <div class="relative w-full h-[3px] bg-[#d0cbc4] rounded-full cursor-pointer" @click="seekAudio($event)">
+        <div class="h-full bg-ink rounded-full transition-[width_0.15s_linear]" :style="`width:${progress}%`"></div>
+        <div class="progress-thumb" :style="`left:${progress}%`"></div>
+      </div>
+      <div class="flex justify-between text-[11px] text-muted tabular-nums">
+        <span x-text="timeElapsed">0:00</span>
+        <span>13:38</span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="relative flex items-center justify-center gap-7 px-5 py-2 pb-3">
+      <!-- Skip back -->
+      <button @click="skipWords(-20)" class="w-9 h-9 flex items-center justify-center rounded-full text-[#555] hover:bg-black/5 hover:text-ink transition-all">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
+        </svg>
+      </button>
+
+      <!-- Play/Pause -->
+      <button @click="togglePlay()"
+              class="w-[52px] h-[52px] rounded-full bg-ink flex items-center justify-center text-white shadow-[0_2px_10px_rgba(0,0,0,0.2)] hover:bg-[#333] active:scale-95 transition-all">
+        <svg x-show="!playing" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg x-show="playing" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
+        </svg>
+      </button>
+
+      <!-- Skip forward -->
+      <button @click="skipWords(20)" class="w-9 h-9 flex items-center justify-center rounded-full text-[#555] hover:bg-black/5 hover:text-ink transition-all">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+        </svg>
+      </button>
+
+      <!-- Speed chip -->
+      <button @click="speedModal = true"
+              class="absolute right-5 text-[13px] font-semibold text-[#555] px-2.5 py-1.5 rounded-md hover:bg-black/6 hover:text-ink transition-all"
+              x-text="rateDisplay(speechRate)">1x</button>
+    </div>
+  </div>
+
+  <!-- Page nav -->
+  <div class="flex items-center justify-center gap-3.5 py-2 text-[12px] text-muted">
+    <button class="text-muted hover:text-ink transition-colors px-1">←</button>
+    <span>PAGE</span>
+    <span class="text-ink font-semibold text-[13px]">10</span>
+    <span>/ 283</span>
+    <button class="text-muted hover:text-ink transition-colors px-1">→</button>
+  </div>
+
+</footer>
+
+<!-- ═══════════════════════════════════════════
+     IMMERSIVE PANEL (dark floating card)
+═══════════════════════════════════════════ -->
+<div x-show="panelOpen"
+     x-transition:enter="transition ease-out duration-150"
+     x-transition:enter-start="opacity-0 scale-95"
+     x-transition:enter-end="opacity-100 scale-100"
+     class="fixed top-[108px] right-5 w-[214px] bg-[#1c1f26] border border-[#2e3340] rounded-xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)] z-50">
+
+  <p class="text-[11px] font-semibold text-[#e0e2ea] tracking-[0.06em] mb-3.5">Immersive Reader v1.0</p>
+
+  <div class="flex items-center justify-between mb-2.5">
+    <span class="text-[12px] text-[#8b90a0]">Sync Speed</span>
+    <span class="text-[18px] font-semibold text-[#e8eaf0] tabular-nums" x-text="rateDisplay(speechRate)"></span>
+  </div>
+
+  <div class="grid grid-cols-2 gap-2 mb-3">
+    <button @click="setSpeed(speechRate + 0.2)"
+            class="bg-[#2a2f3a] border border-[#2e3340] text-[#c0c4d0] rounded-lg py-[7px] text-[12px] font-medium hover:bg-[#363c4a] hover:text-[#e8eaf0] transition-all">
+      Faster
+    </button>
+    <button @click="setSpeed(speechRate - 0.2)"
+            class="bg-[#2a2f3a] border border-[#2e3340] text-[#c0c4d0] rounded-lg py-[7px] text-[12px] font-medium hover:bg-[#363c4a] hover:text-[#e8eaf0] transition-all">
+      Slower
+    </button>
+  </div>
+
+  <button @click="toggleDemo()"
+          :class="demoRunning ? 'bg-[#e05252] hover:bg-[#c94040]' : 'bg-[#3b8bff] hover:bg-[#2575f0]'"
+          class="w-full rounded-lg py-2.5 text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 mb-2.5 transition-colors">
+    <svg x-show="!demoRunning" class="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    <svg x-show="demoRunning" class="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
+    </svg>
+    <span x-text="demoRunning ? 'Stop' : 'Start Demo'"></span>
+  </button>
+
+  <p class="text-[10px] text-[#555a6a] leading-relaxed">
+    <strong class="text-[#7a7f90] font-medium">✦ Interactive:</strong> Click any word to jump audio to that position.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SPEED MODAL
+═══════════════════════════════════════════ -->
+<div x-show="speedModal"
+     @click.self="speedModal = false"
+     class="fixed inset-0 bg-black/45 backdrop-blur-sm z-[400] flex items-end justify-center"
+     style="display:none">
+  <div class="bg-white rounded-t-[20px] w-full max-w-[540px] px-7 py-7 pb-10 slide-up">
+
+    <div class="flex items-start justify-between mb-1">
+      <div>
+        <h2 class="text-[24px] font-bold text-ink" x-text="speedName(speechRate)">Normal</h2>
+      </div>
+      <button @click="speedModal = false" class="text-[22px] text-muted hover:text-ink leading-none transition-colors mt-1">×</button>
+    </div>
+    <p class="text-[13px] text-muted mb-6">Duration ~13:38</p>
+
+    <!-- Stepper -->
+    <div class="flex items-center justify-center gap-6 mb-6">
+      <button @click="setSpeed(Math.round((speechRate - 0.1)*10)/10)"
+              class="w-[52px] h-[52px] rounded-[14px] bg-[#f0f0f0] hover:bg-[#e4e4e4] text-[24px] font-light text-ink flex items-center justify-center active:scale-95 transition-all select-none">−</button>
+      <span class="text-[38px] font-bold text-ink tabular-nums min-w-[100px] text-center" x-text="rateDisplay(speechRate)"></span>
+      <button @click="setSpeed(Math.round((speechRate + 0.1)*10)/10)"
+              class="w-[52px] h-[52px] rounded-[14px] bg-[#f0f0f0] hover:bg-[#e4e4e4] text-[24px] font-light text-ink flex items-center justify-center active:scale-95 transition-all select-none">+</button>
+    </div>
+
+    <!-- Presets -->
+    <div class="grid grid-cols-3 gap-2.5 mb-6">
+      <template x-for="p in [0.8, 1.0, 1.2, 1.5, 2.0, 2.5]" :key="p">
+        <button @click="setSpeed(p)"
+                :class="Math.abs(speechRate - p) < 0.05 ? 'bg-reader-blue text-white' : 'bg-[#f0f0f0] text-ink hover:bg-[#e4e4e4]'"
+                class="py-[15px] rounded-xl text-[15px] font-semibold transition-all"
+                x-text="p + 'x'">
+        </button>
+      </template>
+    </div>
+
+    <!-- Auto speed toggle -->
+    <div class="flex items-center justify-between pt-1">
+      <div>
+        <span class="block text-[15px] font-semibold text-ink">Increase Speed Automatically</span>
+        <span class="block text-[12px] text-muted mt-0.5">Speed up every 500 words</span>
+      </div>
+      <label class="relative w-[46px] h-[26px] flex-shrink-0">
+        <input type="checkbox" x-model="autoSpeed" class="sr-only peer">
+        <span class="absolute inset-0 bg-[#ccc] peer-checked:bg-reader-blue rounded-full cursor-pointer transition-colors
+                     after:content-[''] after:absolute after:left-[3px] after:top-[3px] after:w-5 after:h-5
+                     after:bg-white after:rounded-full after:shadow after:transition-transform
+                     peer-checked:after:translate-x-5"></span>
+      </label>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TOAST
+═══════════════════════════════════════════ -->
+<div x-show="toast"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0 translate-y-2"
+     x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-ink text-white text-[12px] font-medium px-4 py-2 rounded-full z-[500] whitespace-nowrap shadow-lg"
+     x-text="toastMsg"
+     style="display:none">
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     ALPINE JS COMPONENT
+     In production: this lives in resources/js/reader.js
+     and is registered in your Alpine setup
+═══════════════════════════════════════════ -->
+<script>
+/*
+ * NOTE FOR JAMES:
+ * This would live in resources/js/reader.js and be registered as:
+ *   Alpine.data('immersiveReader', immersiveReader)
+ * The Blade template would then be:
+ *   <div x-data="immersiveReader()" x-init="init()">
+ *
+ * Book content would come from Laravel via:
+ *   <div x-data='immersiveReader(@json($book->paragraphs))'>
+ */
+
+function immersiveReader() {
+  return {
+
+    // ── STATE ──────────────────────────────────────────
+    tab:         'read',
+    bionic:      false,
+    panelOpen:   false,
+    speedModal:  false,
+    demoRunning: false,
+    playing:     false,
+    autoSpeed:   false,
+    speechRate:  1.0,
+    progress:    0,
+    timeElapsed: '0:00',
+    toast:       false,
+    toastMsg:    '',
+
+    // internal
+    allWords:        [],
+    fullText:        '',
+    utterance:       null,
+    utteranceOffset: 0,
+    lastHighlighted: -1,
+    elapsedSec:      0,
+    audioTimer:      null,
+    autoWordCount:   0,
+    chosenVoice:     null,
+
+    // ── BOOK DATA ──────────────────────────────────────
+    // In production: passed in from Laravel as @json($book->paragraphs)
+    paragraphs: [
+      { id: 'p0', text: "It was still raining on Monday morning after a wet weekend stuck indoors with 'the olds' as Holly now called her parents. She'd heard Madison say it once and there was a satisfying frown from Mum when she threw it out at home." },
+      { id: 'p1', text: "The worst thing about Monday mornings was double PE. Holly hated changing in front of the other girls. One by one every single girl in her class seemed to have developed bodies with curves in all the right places." },
+      { id: 'p2', text: "Holly remained flat chested like in Primary School." },
+      { id: 'p3', text: "Now she tried to pull off her PE top and pull on her school shirt without anyone noticing." },
+      { id: 'p4', text: '"Still in a training bra, Holly," came Aisha\'s grating voice.' },
+      { id: 'p5', text: "She was one of the Bezzies — Madison's best mates - which consisted of the prettiest and most popular girls in class." },
+      { id: 'p6', text: '"Holly\'s sooo young still," someone else said in a low voice and there was a general hum of agreement.' },
+      { id: 'p7', text: "Madison's eyes met Holly's across the changing room. There was something in that look — an apology maybe, or a warning." },
+    ],
+
+    // ── INIT ──────────────────────────────────────────
+    init() {
+      this.buildWordSpans();
+      // Load best voice (async on some browsers)
+      if ('speechSynthesis' in window) {
+        this.chosenVoice = this.pickBestVoice();
+        window.speechSynthesis.onvoiceschanged = () => {
+          this.chosenVoice = this.pickBestVoice();
+        };
+      }
+    },
+
+    // ── VOICE SELECTION ───────────────────────────────
+    pickBestVoice() {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = ['Samantha','Karen','Daniel','Moira','Tessa','Microsoft Aria','Microsoft Jenny','Google UK English Female','Google US English'];
+      for (const name of preferred) {
+        const v = voices.find(v => v.name.includes(name));
+        if (v) return v;
+      }
+      return voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+    },
+
+    // ── BUILD WORD SPANS ──────────────────────────────
+    bionicSplit(word) {
+      const alpha = word.replace(/[^a-zA-Z]/g, '');
+      if (alpha.length <= 1) return [word, ''];
+      const boldCount = Math.ceil(alpha.length / 2);
+      let count = 0, splitAt = 0;
+      for (let i = 0; i < word.length; i++) {
+        if (/[a-zA-Z]/.test(word[i])) count++;
+        if (count === boldCount) { splitAt = i + 1; break; }
+      }
+      return [word.slice(0, splitAt), word.slice(splitAt)];
+    },
+
+    buildWordSpans() {
+      this.paragraphs.forEach((p, pi) => {
+        if (pi > 0) this.fullText += '. ';
+        const paraCharStart = this.fullText.length;
+        let localOffset = 0;
+        const el = document.getElementById(p.id);
+        if (!el) return;
+
+        p.text.split(/(\s+)/).forEach(token => {
+          if (/\S/.test(token)) {
+            const span = document.createElement('span');
+            span.className = 'word-span';
+            const [b, r] = this.bionicSplit(token);
+            const bs = document.createElement('span'); bs.className = 'bio-bold'; bs.textContent = b;
+            const rs = document.createElement('span'); rs.className = 'bio-rest'; rs.textContent = r;
+            span.appendChild(bs); span.appendChild(rs);
+            const idx = this.allWords.length;
+            span.addEventListener('click', () => this.jumpToWord(idx));
+            this.allWords.push({ el: span, text: token, charStart: paraCharStart + localOffset });
+            el.appendChild(span);
+          } else {
+            el.appendChild(document.createTextNode(token));
+          }
+          localOffset += token.length;
+        });
+        this.fullText += p.text;
+      });
+    },
+
+    // ── HIGHLIGHT ─────────────────────────────────────
+    wordIdxAtChar(absChar) {
+      let lo = 0, hi = this.allWords.length - 1, best = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (this.allWords[mid].charStart <= absChar) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      return best;
+    },
+
+    highlightWord(idx) {
+      if (idx === this.lastHighlighted) return;
+      if (this.lastHighlighted >= 0) this.allWords[this.lastHighlighted].el.classList.remove('active');
+      if (idx >= 0 && idx < this.allWords.length) {
+        this.allWords[idx].el.classList.add('active');
+        this.allWords[idx].el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (this.autoSpeed) {
+          this.autoWordCount++;
+          if (this.autoWordCount % 500 === 0) {
+            this.speechRate = Math.min(this.speechRate + 0.1, 2.5);
+            this.startSpeech(this.allWords[idx].charStart);
+          }
+        }
+      }
+      this.lastHighlighted = idx;
+    },
+
+    clearHighlight() {
+      if (this.lastHighlighted >= 0) this.allWords[this.lastHighlighted].el.classList.remove('active');
+      this.lastHighlighted = -1;
+    },
+
+    // ── SPEECH ────────────────────────────────────────
+    buildUtterance(fromChar) {
+      this.utteranceOffset = fromChar;
+      if (!this.chosenVoice) this.chosenVoice = this.pickBestVoice();
+      const u = new SpeechSynthesisUtterance(this.fullText.slice(fromChar));
+      if (this.chosenVoice) u.voice = this.chosenVoice;
+      u.rate = this.speechRate; u.pitch = 1; u.volume = 1;
+      u.onboundary = (e) => {
+        if (e.name !== 'word') return;
+        this.highlightWord(this.wordIdxAtChar(this.utteranceOffset + e.charIndex));
+      };
+      u.onend = () => {
+        this.playing = false; this.stopAudioTimer(); this.clearHighlight(); this.demoRunning = false;
+      };
+      u.onerror = (e) => {
+        if (e.error === 'interrupted' || e.error === 'canceled') return;
+        this.playing = false; this.stopAudioTimer();
+      };
+      return u;
+    },
+
+    startSpeech(fromChar) {
+      if (fromChar === undefined) fromChar = this.utteranceOffset;
+      if (!('speechSynthesis' in window)) { this.showToast('TTS not supported'); return; }
+      window.speechSynthesis.cancel();
+      this.utterance = this.buildUtterance(fromChar);
+      window.speechSynthesis.speak(this.utterance);
+      this.playing = true; this.startAudioTimer();
+    },
+
+    togglePlay() {
+      if (!('speechSynthesis' in window)) { this.showToast('Not supported'); return; }
+      if (this.playing) {
+        window.speechSynthesis.pause(); this.playing = false; this.stopAudioTimer();
+      } else if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume(); this.playing = true; this.startAudioTimer();
+      } else {
+        this.startSpeech(this.utteranceOffset);
+      }
+    },
+
+    skipWords(n) {
+      const target = Math.max(0, Math.min(this.allWords.length - 1, this.lastHighlighted + n));
+      this.jumpToWord(target);
+    },
+
+    jumpToWord(idx) {
+      this.demoRunning = true;
+      this.tab = 'listen';
+      this.startSpeech(this.allWords[idx].charStart);
+    },
+
+    // ── AUDIO TIMER (progress bar) ────────────────────
+    startAudioTimer() {
+      this.stopAudioTimer();
+      const totalSec = 818;
+      this.audioTimer = setInterval(() => {
+        this.elapsedSec = Math.min(this.elapsedSec + 0.25, totalSec);
+        const m = Math.floor(this.elapsedSec / 60);
+        const s = Math.floor(this.elapsedSec % 60).toString().padStart(2, '0');
+        this.timeElapsed = `${m}:${s}`;
+        this.progress = (this.elapsedSec / totalSec) * 100;
+      }, 250);
+    },
+    stopAudioTimer() { clearInterval(this.audioTimer); },
+
+    seekAudio(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      this.elapsedSec = pct * 818;
+      this.progress = pct * 100;
+    },
+
+    // ── SPEED ─────────────────────────────────────────
+    setSpeed(rate) {
+      this.speechRate = Math.max(0.5, Math.min(3.0, Math.round(rate * 10) / 10));
+      if (this.playing || window.speechSynthesis?.paused) {
+        const from = this.lastHighlighted >= 0 ? this.allWords[this.lastHighlighted].charStart : this.utteranceOffset;
+        this.startSpeech(from);
+      }
+    },
+
+    rateDisplay(r) {
+      const v = Math.round(r * 10) / 10;
+      return (Number.isInteger(v) ? v : v) + 'x';
+    },
+
+    speedName(r) {
+      const names = { 0.8:'Slower', 1.0:'Normal', 1.2:'Faster', 1.5:'Fast', 2.0:'Very Fast', 2.5:'Ultra Fast' };
+      return names[Math.round(r * 10) / 10] || (r < 1 ? 'Slower' : 'Faster');
+    },
+
+    // ── DEMO ──────────────────────────────────────────
+    toggleDemo() {
+      this.demoRunning = !this.demoRunning;
+      if (this.demoRunning) {
+        this.tab = 'listen';
+        this.startSpeech(this.utteranceOffset || 0);
+      } else {
+        window.speechSynthesis.cancel();
+        this.playing = false; this.stopAudioTimer(); this.clearHighlight();
+      }
+    },
+
+    // ── BIONIC ────────────────────────────────────────
+    toggleBionic() {
+      this.bionic = !this.bionic;
+      this.showToast(this.bionic ? '👁 Bionic Reading ON' : 'Bionic Reading OFF');
+    },
+
+    // ── TOAST ─────────────────────────────────────────
+    showToast(msg) {
+      this.toastMsg = msg; this.toast = true;
+      setTimeout(() => { this.toast = false; }, 2000);
+    },
+
+  } // end return
+} // end immersiveReader()
+</script>
+
+</body>
+</html>

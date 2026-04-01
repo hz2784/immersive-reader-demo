@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --color-cream: #f7f5f0;
+  --color-parchment: #dedad3;
+  --color-ink: #1a1a1a;
+  --color-muted: #7a7570;
+  --color-border: #e0dbd3;
+  --color-highlight: #ffe566;
+  --color-highlight-dim: #fff5b0;
+  --color-reader-blue: #2baae2;
+}

@@ -1,0 +1,13 @@
+{
+  "name": "immersive-reader-demo",
+  "version": "1.0.0",
+  "description": "Immersive Reader feature demo — Tailwind CSS + Alpine.js",
+  "scripts": {
+    "build:css": "tailwindcss -i input.css -o style.css --content index.html",
+    "watch:css": "tailwindcss -i input.css -o style.css --content index.html --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0",
+    "tailwindcss": "^4.0.0"
+  }
+}
