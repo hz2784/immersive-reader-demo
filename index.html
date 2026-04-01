@@ -11,11 +11,11 @@
 <!-- ALPINE JS (CDN — in prod this is your existing Alpine setup) -->
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-<!-- Google Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Google Fonts — added Atkinson Hyperlegible (purpose-built for low vision / dyslexia) -->
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@400;500;600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 
 <style>
-  /* Non-Tailwind styles: word highlight animation & bionic reading */
+  /* Word highlight animation & bionic reading */
   .word-span {
     display: inline;
     border-radius: 3px;
@@ -43,6 +43,55 @@
     width: 12px; height: 12px; border-radius: 50%;
     background: #1a1a1a; pointer-events: none;
   }
+
+  /* Book text — typography settings applied via Alpine style binding */
+  #bookText {
+    transition: line-height 0.2s, letter-spacing 0.2s, word-spacing 0.2s, font-size 0.2s;
+  }
+
+  /* Panel sliders */
+  .typo-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 3px;
+    border-radius: 2px;
+    background: #3a3f4e;
+    outline: none;
+  }
+  .typo-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #e0e2ea;
+    cursor: pointer;
+  }
+  .typo-slider::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #e0e2ea;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Font / preset selection chip */
+  .sel-chip {
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: border-color 0.15s, background 0.15s;
+    background: #2a2f3a;
+    color: #c0c4d0;
+  }
+  .sel-chip:hover { background: #363c4a; }
+  .sel-chip.active { border-color: #3b8bff; }
+
+  .panel-divider { border: none; border-top: 1px solid #2e3340; margin: 12px 0; }
 </style>
 </head>
 
@@ -56,13 +105,11 @@
 <header class="bg-cream border-b border-border sticky top-0 z-50 shadow-[0_1px_0_#e0dbd3]">
   <div class="flex items-center justify-between h-[50px] px-5">
 
-    <!-- Left: Exit -->
     <button class="flex items-center gap-1.5 text-[11px] font-semibold tracking-widest text-muted uppercase hover:text-ink transition-colors">
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
       Exit Book
     </button>
 
-    <!-- Centre: Book title -->
     <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm font-medium text-ink pointer-events-none">
       <svg class="w-4 h-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
@@ -70,13 +117,11 @@
       Always here for you
     </div>
 
-    <!-- Right: Help -->
     <button class="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:bg-border hover:text-ink transition-all">
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
     </button>
-
   </div>
 </header>
 
@@ -109,7 +154,7 @@
     <button @click="panelOpen = !panelOpen"
             :class="panelOpen ? 'bg-yellow-100 text-yellow-800' : 'text-muted hover:bg-border hover:text-ink'"
             class="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-all"
-            title="Immersive Reader">
+            title="Reading Settings">
       <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
@@ -124,16 +169,21 @@
 <main class="flex-1 flex justify-center px-6 py-12 pb-36">
   <article class="bg-white w-[680px] max-w-full px-[76px] py-[60px] shadow-[0_2px_24px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] rounded-sm min-h-[640px]">
 
-    <!-- Chapter heading -->
     <p class="text-center font-serif text-[13px] italic text-muted mb-1.5 tracking-[0.02em]">Madison and The Bezzies</p>
     <h1 class="text-center font-serif text-[30px] font-bold text-ink leading-tight mb-11">A New Beginning</h1>
 
-    <!-- Book text — Alpine controls bionic class -->
+    <!-- Book text — typography settings injected via Alpine :style -->
     <div id="bookText"
          :class="bionic ? 'bionic' : ''"
-         class="font-serif text-[16.5px] leading-[1.88] text-ink text-justify">
+         :style="`
+           line-height: ${typo.lineHeight};
+           letter-spacing: ${typo.letterSpacing}em;
+           word-spacing: ${typo.wordSpacing}em;
+           font-size: ${typo.fontSize}px;
+           font-family: ${typo.fontFamily};
+         `"
+         class="text-ink text-justify">
 
-      <!-- Paragraphs are injected by Alpine x-init -->
       <p id="p0" class="mb-0"></p>
       <p id="p1" class="mb-0 mt-4 indent-8"></p>
       <p id="p2" class="mb-0 mt-4 indent-8"></p>
@@ -154,7 +204,6 @@
 ═══════════════════════════════════════════ -->
 <footer class="fixed bottom-0 left-0 right-0 bg-[#f0ede8] border-t border-border z-40">
 
-  <!-- READ / LISTEN tabs -->
   <div class="flex border-b border-border">
     <button @click="tab = 'read'"
             :class="tab === 'read' ? 'text-ink border-ink' : 'text-muted border-transparent hover:text-ink'"
@@ -168,10 +217,7 @@
     </button>
   </div>
 
-  <!-- Listen player (shown only in listen tab) -->
   <div x-show="tab === 'listen'" x-transition class="flex flex-col">
-
-    <!-- Progress bar -->
     <div class="px-5 pt-3 flex flex-col gap-1.5">
       <div class="relative w-full h-[3px] bg-[#d0cbc4] rounded-full cursor-pointer" @click="seekAudio($event)">
         <div class="h-full bg-ink rounded-full transition-[width_0.15s_linear]" :style="`width:${progress}%`"></div>
@@ -183,16 +229,12 @@
       </div>
     </div>
 
-    <!-- Controls -->
     <div class="relative flex items-center justify-center gap-7 px-5 py-2 pb-3">
-      <!-- Skip back -->
       <button @click="skipWords(-20)" class="w-9 h-9 flex items-center justify-center rounded-full text-[#555] hover:bg-black/5 hover:text-ink transition-all">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
         </svg>
       </button>
-
-      <!-- Play/Pause -->
       <button @click="togglePlay()"
               class="w-[52px] h-[52px] rounded-full bg-ink flex items-center justify-center text-white shadow-[0_2px_10px_rgba(0,0,0,0.2)] hover:bg-[#333] active:scale-95 transition-all">
         <svg x-show="!playing" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -200,22 +242,17 @@
           <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
         </svg>
       </button>
-
-      <!-- Skip forward -->
       <button @click="skipWords(20)" class="w-9 h-9 flex items-center justify-center rounded-full text-[#555] hover:bg-black/5 hover:text-ink transition-all">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
         </svg>
       </button>
-
-      <!-- Speed chip -->
       <button @click="speedModal = true"
               class="absolute right-5 text-[13px] font-semibold text-[#555] px-2.5 py-1.5 rounded-md hover:bg-black/6 hover:text-ink transition-all"
               x-text="rateDisplay(speechRate)">1x</button>
     </div>
   </div>
 
-  <!-- Page nav -->
   <div class="flex items-center justify-center gap-3.5 py-2 text-[12px] text-muted">
     <button class="text-muted hover:text-ink transition-colors px-1">←</button>
     <span>PAGE</span>
@@ -227,15 +264,16 @@
 </footer>
 
 <!-- ═══════════════════════════════════════════
-     IMMERSIVE PANEL (dark floating card)
+     IMMERSIVE PANEL
 ═══════════════════════════════════════════ -->
 <div x-show="panelOpen"
      x-transition:enter="transition ease-out duration-150"
      x-transition:enter-start="opacity-0 scale-95"
      x-transition:enter-end="opacity-100 scale-100"
-     class="fixed top-[108px] right-5 w-[214px] bg-[#1c1f26] border border-[#2e3340] rounded-xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)] z-50">
+     class="fixed top-[108px] right-5 w-[240px] bg-[#1c1f26] border border-[#2e3340] rounded-xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)] z-50 overflow-y-auto max-h-[calc(100vh-160px)]">
 
-  <p class="text-[11px] font-semibold text-[#e0e2ea] tracking-[0.06em] mb-3.5">Immersive Reader v1.0</p>
+  <!-- ── Playback ── -->
+  <p class="text-[11px] font-semibold text-[#e0e2ea] tracking-[0.06em] mb-3">Immersive Reader v1.0</p>
 
   <div class="flex items-center justify-between mb-2.5">
     <span class="text-[12px] text-[#8b90a0]">Sync Speed</span>
@@ -255,7 +293,7 @@
 
   <button @click="toggleDemo()"
           :class="demoRunning ? 'bg-[#e05252] hover:bg-[#c94040]' : 'bg-[#3b8bff] hover:bg-[#2575f0]'"
-          class="w-full rounded-lg py-2.5 text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 mb-2.5 transition-colors">
+          class="w-full rounded-lg py-2.5 text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 mb-2 transition-colors">
     <svg x-show="!demoRunning" class="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
     <svg x-show="demoRunning" class="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
@@ -266,6 +304,86 @@
   <p class="text-[10px] text-[#555a6a] leading-relaxed">
     <strong class="text-[#7a7f90] font-medium">✦ Interactive:</strong> Click any word to jump audio to that position.
   </p>
+
+  <!-- ── Divider ── -->
+  <hr class="panel-divider">
+
+  <!-- ── Reading Style ── -->
+  <p class="text-[11px] font-semibold text-[#e0e2ea] tracking-[0.06em] mb-3">Reading Style</p>
+
+  <!-- Presets -->
+  <p class="text-[10px] text-[#8b90a0] mb-1.5 uppercase tracking-wider">Presets</p>
+  <div class="grid grid-cols-3 gap-1.5 mb-3">
+    <div @click="applyPreset('default')"
+         :class="activePreset === 'default' ? 'active' : ''"
+         class="sel-chip">Default</div>
+    <div @click="applyPreset('comfort')"
+         :class="activePreset === 'comfort' ? 'active' : ''"
+         class="sel-chip">Comfort</div>
+    <div @click="applyPreset('dyslexia')"
+         :class="activePreset === 'dyslexia' ? 'active' : ''"
+         class="sel-chip">Dyslexia</div>
+  </div>
+
+  <!-- Font family -->
+  <p class="text-[10px] text-[#8b90a0] mb-1.5 uppercase tracking-wider">Font</p>
+  <div class="grid grid-cols-2 gap-1.5 mb-3">
+    <div @click="setFont('lora')"
+         :class="activeFontKey === 'lora' ? 'active' : ''"
+         class="sel-chip" style="font-family:'Lora',Georgia,serif">Serif</div>
+    <div @click="setFont('atkinson')"
+         :class="activeFontKey === 'atkinson' ? 'active' : ''"
+         class="sel-chip" style="font-family:'Atkinson Hyperlegible',sans-serif">Hyperlegible</div>
+    <div @click="setFont('dmsans')"
+         :class="activeFontKey === 'dmsans' ? 'active' : ''"
+         class="sel-chip" style="font-family:'DM Sans',sans-serif">DM Sans</div>
+    <div @click="setFont('arial')"
+         :class="activeFontKey === 'arial' ? 'active' : ''"
+         class="sel-chip" style="font-family:Arial,sans-serif">Arial</div>
+  </div>
+
+  <!-- Font size -->
+  <div class="flex items-center justify-between mb-1">
+    <p class="text-[10px] text-[#8b90a0] uppercase tracking-wider">Font size</p>
+    <span class="text-[11px] font-semibold text-[#c0c4d0] tabular-nums" x-text="typo.fontSize + 'px'"></span>
+  </div>
+  <input type="range" min="14" max="22" step="1" x-model.number="typo.fontSize"
+         @input="activePreset = 'custom'; saveTypo()"
+         class="typo-slider mb-3">
+
+  <!-- Line spacing -->
+  <div class="flex items-center justify-between mb-1">
+    <p class="text-[10px] text-[#8b90a0] uppercase tracking-wider">Line spacing</p>
+    <span class="text-[11px] font-semibold text-[#c0c4d0] tabular-nums" x-text="typo.lineHeight + '×'"></span>
+  </div>
+  <input type="range" min="1.4" max="2.2" step="0.1" x-model.number="typo.lineHeight"
+         @input="activePreset = 'custom'; saveTypo()"
+         class="typo-slider mb-3">
+
+  <!-- Letter spacing -->
+  <div class="flex items-center justify-between mb-1">
+    <p class="text-[10px] text-[#8b90a0] uppercase tracking-wider">Letter spacing</p>
+    <span class="text-[11px] font-semibold text-[#c0c4d0] tabular-nums" x-text="typo.letterSpacing + 'em'"></span>
+  </div>
+  <input type="range" min="0" max="0.15" step="0.01" x-model.number="typo.letterSpacing"
+         @input="activePreset = 'custom'; saveTypo()"
+         class="typo-slider mb-3">
+
+  <!-- Word spacing -->
+  <div class="flex items-center justify-between mb-1">
+    <p class="text-[10px] text-[#8b90a0] uppercase tracking-wider">Word spacing</p>
+    <span class="text-[11px] font-semibold text-[#c0c4d0] tabular-nums" x-text="typo.wordSpacing + 'em'"></span>
+  </div>
+  <input type="range" min="0" max="0.3" step="0.05" x-model.number="typo.wordSpacing"
+         @input="activePreset = 'custom'; saveTypo()"
+         class="typo-slider mb-3">
+
+  <!-- Reset -->
+  <button @click="applyPreset('default')"
+          class="w-full text-[11px] text-[#555a6a] hover:text-[#8b90a0] py-1 transition-colors text-center">
+    ↺ Reset to defaults
+  </button>
+
 </div>
 
 <!-- ═══════════════════════════════════════════
@@ -278,14 +396,11 @@
   <div class="bg-white rounded-t-[20px] w-full max-w-[540px] px-7 py-7 pb-10 slide-up">
 
     <div class="flex items-start justify-between mb-1">
-      <div>
-        <h2 class="text-[24px] font-bold text-ink" x-text="speedName(speechRate)">Normal</h2>
-      </div>
+      <h2 class="text-[24px] font-bold text-ink" x-text="speedName(speechRate)">Normal</h2>
       <button @click="speedModal = false" class="text-[22px] text-muted hover:text-ink leading-none transition-colors mt-1">×</button>
     </div>
     <p class="text-[13px] text-muted mb-6">Duration ~13:38</p>
 
-    <!-- Stepper -->
     <div class="flex items-center justify-center gap-6 mb-6">
       <button @click="setSpeed(Math.round((speechRate - 0.1)*10)/10)"
               class="w-[52px] h-[52px] rounded-[14px] bg-[#f0f0f0] hover:bg-[#e4e4e4] text-[24px] font-light text-ink flex items-center justify-center active:scale-95 transition-all select-none">−</button>
@@ -294,7 +409,6 @@
               class="w-[52px] h-[52px] rounded-[14px] bg-[#f0f0f0] hover:bg-[#e4e4e4] text-[24px] font-light text-ink flex items-center justify-center active:scale-95 transition-all select-none">+</button>
     </div>
 
-    <!-- Presets -->
     <div class="grid grid-cols-3 gap-2.5 mb-6">
       <template x-for="p in [0.8, 1.0, 1.2, 1.5, 2.0, 2.5]" :key="p">
         <button @click="setSpeed(p)"
@@ -305,7 +419,6 @@
       </template>
     </div>
 
-    <!-- Auto speed toggle -->
     <div class="flex items-center justify-between pt-1">
       <div>
         <span class="block text-[15px] font-semibold text-ink">Increase Speed Automatically</span>
@@ -341,25 +454,19 @@
 
 <!-- ═══════════════════════════════════════════
      ALPINE JS COMPONENT
-     In production: this lives in resources/js/reader.js
-     and is registered in your Alpine setup
+     In production: resources/js/reader.js
 ═══════════════════════════════════════════ -->
 <script>
 /*
  * NOTE FOR JAMES:
- * This would live in resources/js/reader.js and be registered as:
- *   Alpine.data('immersiveReader', immersiveReader)
- * The Blade template would then be:
- *   <div x-data="immersiveReader()" x-init="init()">
- *
- * Book content would come from Laravel via:
- *   <div x-data='immersiveReader(@json($book->paragraphs))'>
+ * Register as: Alpine.data('immersiveReader', immersiveReader)
+ * Book content from Laravel: <div x-data='immersiveReader(@json($book->paragraphs))'>
  */
 
 function immersiveReader() {
   return {
 
-    // ── STATE ──────────────────────────────────────────
+    // ── STATE ─────────────────────────────────────────
     tab:         'read',
     bionic:      false,
     panelOpen:   false,
@@ -373,6 +480,44 @@ function immersiveReader() {
     toast:       false,
     toastMsg:    '',
 
+    // ── TYPOGRAPHY STATE ──────────────────────────────
+    typo: {
+      lineHeight:    1.88,   // default: book-style spacing
+      letterSpacing: 0,
+      wordSpacing:   0,
+      fontSize:      16.5,
+      fontFamily:    "'Lora', Georgia, serif",
+    },
+    activePreset:  'default',
+    activeFontKey: 'lora',
+
+    // Research-based presets:
+    // "comfort"  → WCAG-recommended spacing, neutral sans-serif
+    // "dyslexia" → Zorzi et al. (2012): +0.1em letter spacing halved errors
+    //              BDA guidelines: 1.5× line height minimum, wider word spacing
+    //              Atkinson Hyperlegible: purpose-built for low vision / dyslexia
+    presets: {
+      default: {
+        lineHeight: 1.88, letterSpacing: 0, wordSpacing: 0,
+        fontSize: 16.5, fontFamily: "'Lora', Georgia, serif", fontKey: 'lora'
+      },
+      comfort: {
+        lineHeight: 1.6, letterSpacing: 0.02, wordSpacing: 0.05,
+        fontSize: 17, fontFamily: "'DM Sans', system-ui, sans-serif", fontKey: 'dmsans'
+      },
+      dyslexia: {
+        lineHeight: 1.9, letterSpacing: 0.1, wordSpacing: 0.1,
+        fontSize: 18, fontFamily: "'Atkinson Hyperlegible', sans-serif", fontKey: 'atkinson'
+      },
+    },
+
+    fontMap: {
+      lora:     "'Lora', Georgia, serif",
+      atkinson: "'Atkinson Hyperlegible', sans-serif",
+      dmsans:   "'DM Sans', system-ui, sans-serif",
+      arial:    "Arial, Helvetica, sans-serif",
+    },
+
     // internal
     allWords:        [],
     fullText:        '',
@@ -384,8 +529,7 @@ function immersiveReader() {
     autoWordCount:   0,
     chosenVoice:     null,
 
-    // ── BOOK DATA ──────────────────────────────────────
-    // In production: passed in from Laravel as @json($book->paragraphs)
+    // ── BOOK DATA ─────────────────────────────────────
     paragraphs: [
       { id: 'p0', text: "It was still raining on Monday morning after a wet weekend stuck indoors with 'the olds' as Holly now called her parents. She'd heard Madison say it once and there was a satisfying frown from Mum when she threw it out at home." },
       { id: 'p1', text: "The worst thing about Monday mornings was double PE. Holly hated changing in front of the other girls. One by one every single girl in her class seemed to have developed bodies with curves in all the right places." },
@@ -397,19 +541,56 @@ function immersiveReader() {
       { id: 'p7', text: "Madison's eyes met Holly's across the changing room. There was something in that look — an apology maybe, or a warning." },
     ],
 
-    // ── INIT ──────────────────────────────────────────
+    // ── INIT ─────────────────────────────────────────
     init() {
       this.buildWordSpans();
-      // Load best voice (async on some browsers)
       if ('speechSynthesis' in window) {
         this.chosenVoice = this.pickBestVoice();
         window.speechSynthesis.onvoiceschanged = () => {
           this.chosenVoice = this.pickBestVoice();
         };
       }
+      // Restore saved typography preferences from localStorage
+      try {
+        const saved = localStorage.getItem('ir_typo');
+        if (saved) {
+          const { typo, preset, fontKey } = JSON.parse(saved);
+          if (typo)    this.typo = { ...this.typo, ...typo };
+          if (preset)  this.activePreset = preset;
+          if (fontKey) this.activeFontKey = fontKey;
+        }
+      } catch(e) {}
     },
 
-    // ── VOICE SELECTION ───────────────────────────────
+    // ── TYPOGRAPHY ───────────────────────────────────
+    applyPreset(name) {
+      const p = this.presets[name];
+      if (!p) return;
+      this.typo = { lineHeight: p.lineHeight, letterSpacing: p.letterSpacing,
+                    wordSpacing: p.wordSpacing, fontSize: p.fontSize, fontFamily: p.fontFamily };
+      this.activePreset  = name;
+      this.activeFontKey = p.fontKey;
+      this.saveTypo();
+      const labels = { default: 'Default style', comfort: '✦ Comfort mode', dyslexia: '✦ Dyslexia-friendly' };
+      this.showToast(labels[name] || name);
+    },
+
+    setFont(key) {
+      this.typo.fontFamily = this.fontMap[key] || this.fontMap.lora;
+      this.activeFontKey   = key;
+      this.activePreset    = 'custom';
+      this.saveTypo();
+    },
+
+    saveTypo() {
+      try {
+        localStorage.setItem('ir_typo', JSON.stringify({
+          typo: this.typo, preset: this.activePreset, fontKey: this.activeFontKey
+        }));
+      } catch(e) {}
+    },
+
+    // ── VOICE ────────────────────────────────────────
     pickBestVoice() {
       const voices = window.speechSynthesis.getVoices();
       const preferred = ['Samantha','Karen','Daniel','Moira','Tessa','Microsoft Aria','Microsoft Jenny','Google UK English Female','Google US English'];
@@ -420,7 +601,7 @@ function immersiveReader() {
       return voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
     },
 
-    // ── BUILD WORD SPANS ──────────────────────────────
+    // ── WORD SPANS ───────────────────────────────────
     bionicSplit(word) {
       const alpha = word.replace(/[^a-zA-Z]/g, '');
       if (alpha.length <= 1) return [word, ''];
@@ -440,7 +621,6 @@ function immersiveReader() {
         let localOffset = 0;
         const el = document.getElementById(p.id);
         if (!el) return;
-
         p.text.split(/(\s+)/).forEach(token => {
           if (/\S/.test(token)) {
             const span = document.createElement('span');
@@ -462,7 +642,7 @@ function immersiveReader() {
       });
     },
 
-    // ── HIGHLIGHT ─────────────────────────────────────
+    // ── HIGHLIGHT ────────────────────────────────────
     wordIdxAtChar(absChar) {
       let lo = 0, hi = this.allWords.length - 1, best = 0;
       while (lo <= hi) {
@@ -495,7 +675,7 @@ function immersiveReader() {
       this.lastHighlighted = -1;
     },
 
-    // ── SPEECH ────────────────────────────────────────
+    // ── SPEECH ───────────────────────────────────────
     buildUtterance(fromChar) {
       this.utteranceOffset = fromChar;
       if (!this.chosenVoice) this.chosenVoice = this.pickBestVoice();
@@ -547,7 +727,7 @@ function immersiveReader() {
       this.startSpeech(this.allWords[idx].charStart);
     },
 
-    // ── AUDIO TIMER (progress bar) ────────────────────
+    // ── AUDIO TIMER ──────────────────────────────────
     startAudioTimer() {
       this.stopAudioTimer();
       const totalSec = 818;
@@ -568,7 +748,7 @@ function immersiveReader() {
       this.progress = pct * 100;
     },
 
-    // ── SPEED ─────────────────────────────────────────
+    // ── SPEED ────────────────────────────────────────
     setSpeed(rate) {
       this.speechRate = Math.max(0.5, Math.min(3.0, Math.round(rate * 10) / 10));
       if (this.playing || window.speechSynthesis?.paused) {
@@ -587,7 +767,7 @@ function immersiveReader() {
       return names[Math.round(r * 10) / 10] || (r < 1 ? 'Slower' : 'Faster');
     },
 
-    // ── DEMO ──────────────────────────────────────────
+    // ── DEMO ─────────────────────────────────────────
     toggleDemo() {
       this.demoRunning = !this.demoRunning;
       if (this.demoRunning) {
@@ -599,20 +779,20 @@ function immersiveReader() {
       }
     },
 
-    // ── BIONIC ────────────────────────────────────────
+    // ── BIONIC ───────────────────────────────────────
     toggleBionic() {
       this.bionic = !this.bionic;
       this.showToast(this.bionic ? '👁 Bionic Reading ON' : 'Bionic Reading OFF');
     },
 
-    // ── TOAST ─────────────────────────────────────────
+    // ── TOAST ────────────────────────────────────────
     showToast(msg) {
       this.toastMsg = msg; this.toast = true;
       setTimeout(() => { this.toast = false; }, 2000);
     },
 
-  } // end return
-} // end immersiveReader()
+  }
+}
 </script>
 
 </body>
