@@ -8,6 +8,9 @@
 <!-- Tailwind CSS — pre-built by Tailwind CLI, no browser compiler -->
 <link rel="stylesheet" href="style.css">
 
+<!-- Word-level timestamps for the human narration recording (generated offline via Whisper) -->
+<script src="./audio/word_timings.js"></script>
+
 <!-- ALPINE JS (CDN — in prod this is your existing Alpine setup) -->
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
@@ -184,16 +187,12 @@
          `"
          class="text-ink text-justify">
 
-      <p id="p0" class="mb-0"></p>
-      <p id="p1" class="mb-0 mt-4 indent-8"></p>
-      <p id="p2" class="mb-0 mt-4 indent-8"></p>
-      <p id="p3" class="mb-0 mt-4 indent-8"></p>
-      <p id="p4" class="mb-0 mt-4 indent-8"></p>
-      <p id="p5" class="mb-0 mt-4 indent-8"></p>
-      <p id="p6" class="mb-0 mt-4 indent-8"></p>
-      <p id="p7" class="mb-0 mt-4 indent-8"></p>
+      <div id="bookParagraphs"></div>
 
     </div>
+
+    <!-- Hidden audio element for human-voice mode -->
+    <audio id="narrationAudio" preload="auto" src="./narration.mp3"></audio>
 
     <p class="text-center font-serif text-sm text-muted mt-11 tracking-[0.05em]">~ 10 ~</p>
   </article>
@@ -218,14 +217,32 @@
   </div>
 
   <div x-show="tab === 'listen'" x-transition class="flex flex-col">
-    <div class="px-5 pt-3 flex flex-col gap-1.5">
+    <!-- Voice mode toggle: TTS vs Human narration -->
+    <div class="flex justify-center gap-1 px-5 pt-2.5">
+      <button @click="setVoiceMode('tts')"
+              :class="voiceMode === 'tts' ? 'bg-ink text-white' : 'bg-transparent text-muted hover:text-ink'"
+              class="text-[10px] font-semibold tracking-widest uppercase px-3 py-1 rounded-full transition-all">
+        TTS
+      </button>
+      <button @click="setVoiceMode('human')"
+              :class="voiceMode === 'human' ? 'bg-ink text-white' : 'bg-transparent text-muted hover:text-ink'"
+              class="text-[10px] font-semibold tracking-widest uppercase px-3 py-1 rounded-full transition-all flex items-center gap-1">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        Human Voice
+      </button>
+    </div>
+
+    <div class="px-5 pt-2 flex flex-col gap-1.5">
       <div class="relative w-full h-[3px] bg-[#d0cbc4] rounded-full cursor-pointer" @click="seekAudio($event)">
         <div class="h-full bg-ink rounded-full transition-[width_0.15s_linear]" :style="`width:${progress}%`"></div>
         <div class="progress-thumb" :style="`left:${progress}%`"></div>
       </div>
       <div class="flex justify-between text-[11px] text-muted tabular-nums">
         <span x-text="timeElapsed">0:00</span>
-        <span>13:38</span>
+        <span x-text="totalTimeDisplay">13:38</span>
       </div>
     </div>
 
@@ -399,7 +416,7 @@
       <h2 class="text-[24px] font-bold text-ink" x-text="speedName(speechRate)">Normal</h2>
       <button @click="speedModal = false" class="text-[22px] text-muted hover:text-ink leading-none transition-colors mt-1">×</button>
     </div>
-    <p class="text-[13px] text-muted mb-6">Duration ~13:38</p>
+    <p class="text-[13px] text-muted mb-6" x-text="`Duration ~${totalTimeDisplay}`">Duration ~13:38</p>
 
     <div class="flex items-center justify-center gap-6 mb-6">
       <button @click="setSpeed(Math.round((speechRate - 0.1)*10)/10)"
@@ -463,6 +480,19 @@
  * Book content from Laravel: <div x-data='immersiveReader(@json($book->paragraphs))'>
  */
 
+// ──────────────────────────────────────────────────────────
+// Non-reactive DOM refs.  DOM elements stored inside Alpine's
+// reactive state get wrapped in a Proxy; operations like
+// classList.add() and reading currentTime can behave oddly
+// through that proxy.  Keeping them in module scope gives us
+// raw element access.
+// ──────────────────────────────────────────────────────────
+const _dom = {
+  audio:     null,   // HTMLAudioElement for human narration
+  wordSpans: [],     // span.word-span per word, aligned to allWords[] by index
+};
+let _humanRaf = 0;   // requestAnimationFrame handle for human-mode sync loop
+
 function immersiveReader() {
   return {
 
@@ -477,8 +507,12 @@ function immersiveReader() {
     speechRate:  1.0,
     progress:    0,
     timeElapsed: '0:00',
+    totalTimeDisplay: '0:00',
     toast:       false,
     toastMsg:    '',
+    voiceMode:   'tts',        // 'tts' | 'human'
+    totalDuration: 0,           // seconds — set from word_timings.json / audio metadata
+    timingsLoaded: false,
 
     // ── TYPOGRAPHY STATE ──────────────────────────────
     typo: {
@@ -530,27 +564,57 @@ function immersiveReader() {
     chosenVoice:     null,
 
     // ── BOOK DATA ─────────────────────────────────────
-    paragraphs: [
-      { id: 'p0', text: "It was still raining on Monday morning after a wet weekend stuck indoors with 'the olds' as Holly now called her parents. She'd heard Madison say it once and there was a satisfying frown from Mum when she threw it out at home." },
-      { id: 'p1', text: "The worst thing about Monday mornings was double PE. Holly hated changing in front of the other girls. One by one every single girl in her class seemed to have developed bodies with curves in all the right places." },
-      { id: 'p2', text: "Holly remained flat chested like in Primary School." },
-      { id: 'p3', text: "Now she tried to pull off her PE top and pull on her school shirt without anyone noticing." },
-      { id: 'p4', text: '"Still in a training bra, Holly," came Aisha\'s grating voice.' },
-      { id: 'p5', text: "She was one of the Bezzies — Madison's best mates - which consisted of the prettiest and most popular girls in class." },
-      { id: 'p6', text: '"Holly\'s sooo young still," someone else said in a low voice and there was a general hum of agreement.' },
-      { id: 'p7', text: "Madison's eyes met Holly's across the changing room. There was something in that look — an apology maybe, or a warning." },
-    ],
+    // Paragraphs are loaded from audio/word_timings.js at init time.
+    // Each paragraph: { id, text, words: [{text, start, end}] }
+    paragraphs: [],
 
     // ── INIT ─────────────────────────────────────────
     init() {
+      // 1. Load transcript + word timestamps (generated offline via Whisper)
+      const data = window.WORD_TIMINGS;
+      if (data && Array.isArray(data.paragraphs)) {
+        this.paragraphs     = data.paragraphs;
+        this.totalDuration  = data.duration || 0;
+        this.totalTimeDisplay = this.formatTime(this.totalDuration);
+        this.timingsLoaded  = true;
+      } else {
+        this.showToast('Word timings not loaded');
+      }
+
+      // 2. Render paragraphs into the book container + build word spans
+      this.renderParagraphs();
       this.buildWordSpans();
+
+      // 3. Prepare TTS
       if ('speechSynthesis' in window) {
         this.chosenVoice = this.pickBestVoice();
         window.speechSynthesis.onvoiceschanged = () => {
           this.chosenVoice = this.pickBestVoice();
         };
       }
-      // Restore saved typography preferences from localStorage
+
+      // 4. Prepare the human-voice audio element.  Store in module-scope _dom
+      //    (not on `this`) so property access bypasses Alpine's reactive proxy.
+      const audio = document.getElementById('narrationAudio');
+      _dom.audio = audio;
+      if (audio) {
+        audio.addEventListener('play',  () => { this.playing = true;  this.startHumanSyncLoop(); });
+        audio.addEventListener('pause', () => { this.playing = false; this.stopHumanSyncLoop(); });
+        audio.addEventListener('ended', () => {
+          this.playing = false; this.demoRunning = false;
+          this.stopHumanSyncLoop(); this.clearHighlight();
+        });
+        audio.addEventListener('loadedmetadata', () => {
+          if (audio.duration && isFinite(audio.duration)) {
+            this.totalDuration    = audio.duration;
+            this.totalTimeDisplay = this.formatTime(this.totalDuration);
+          }
+        });
+        audio.addEventListener('error', () => { this.showToast('⚠ Audio load failed'); });
+        audio.load();
+      }
+
+      // 5. Restore saved typography preferences from localStorage
       try {
         const saved = localStorage.getItem('ir_typo');
         if (saved) {
@@ -560,6 +624,26 @@ function immersiveReader() {
           if (fontKey) this.activeFontKey = fontKey;
         }
       } catch(e) {}
+    },
+
+    // Create a <p> element per paragraph so existing CSS/typography still applies
+    renderParagraphs() {
+      const container = document.getElementById('bookParagraphs');
+      if (!container) return;
+      container.innerHTML = '';
+      this.paragraphs.forEach((p, i) => {
+        const el = document.createElement('p');
+        el.id = p.id;
+        el.className = i === 0 ? 'mb-0' : 'mb-0 mt-4 indent-8';
+        container.appendChild(el);
+      });
+    },
+
+    formatTime(sec) {
+      if (!sec || !isFinite(sec)) return '0:00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
     },
 
     // ── TYPOGRAPHY ───────────────────────────────────
@@ -615,31 +699,84 @@ function immersiveReader() {
     },
 
     buildWordSpans() {
+      // Build spans directly from word_timings data (one span per timestamped word).
+      // Span DOM refs go into module-scope _dom.wordSpans so they are NOT wrapped
+      // by Alpine's reactive Proxy — this is critical for reliable classList /
+      // currentTime access during playback.
+      _dom.wordSpans.length = 0;
       this.paragraphs.forEach((p, pi) => {
-        if (pi > 0) this.fullText += '. ';
-        const paraCharStart = this.fullText.length;
-        let localOffset = 0;
+        if (pi > 0) this.fullText += '\n\n';
         const el = document.getElementById(p.id);
         if (!el) return;
-        p.text.split(/(\s+)/).forEach(token => {
-          if (/\S/.test(token)) {
-            const span = document.createElement('span');
-            span.className = 'word-span';
-            const [b, r] = this.bionicSplit(token);
-            const bs = document.createElement('span'); bs.className = 'bio-bold'; bs.textContent = b;
-            const rs = document.createElement('span'); rs.className = 'bio-rest'; rs.textContent = r;
-            span.appendChild(bs); span.appendChild(rs);
-            const idx = this.allWords.length;
-            span.addEventListener('click', () => this.jumpToWord(idx));
-            this.allWords.push({ el: span, text: token, charStart: paraCharStart + localOffset });
-            el.appendChild(span);
-          } else {
-            el.appendChild(document.createTextNode(token));
+
+        const words = p.words || [];
+        words.forEach((w, wi) => {
+          const charStart = this.fullText.length;
+          const span = document.createElement('span');
+          span.className = 'word-span';
+          const [b, r] = this.bionicSplit(w.text);
+          const bs = document.createElement('span'); bs.className = 'bio-bold'; bs.textContent = b;
+          const rs = document.createElement('span'); rs.className = 'bio-rest'; rs.textContent = r;
+          span.appendChild(bs); span.appendChild(rs);
+          const idx = this.allWords.length;
+          span.addEventListener('click', () => this.jumpToWord(idx));
+          _dom.wordSpans.push(span);
+          this.allWords.push({
+            text:      w.text,
+            charStart: charStart,
+            start:     w.start,
+            end:       w.end,
+          });
+          el.appendChild(span);
+          this.fullText += w.text;
+          if (wi < words.length - 1) {
+            el.appendChild(document.createTextNode(' '));
+            this.fullText += ' ';
           }
-          localOffset += token.length;
         });
-        this.fullText += p.text;
       });
+      console.log('[reader] built', this.allWords.length, 'word spans across', this.paragraphs.length, 'paragraphs');
+    },
+
+    // Binary-search: find the word index whose [start, end) contains the given audio time.
+    wordIdxAtTime(t) {
+      const n = this.allWords.length;
+      if (!n) return -1;
+      if (t <= this.allWords[0].start) return 0;
+      if (t >= this.allWords[n - 1].end) return n - 1;
+      let lo = 0, hi = n - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const w = this.allWords[mid];
+        if (t < w.start) hi = mid - 1;
+        else if (t >= w.end) lo = mid + 1;
+        else return mid;
+      }
+      // Between two words → snap to the one that just ended
+      return Math.max(0, Math.min(n - 1, hi));
+    },
+
+    // ── HUMAN-MODE SYNC LOOP ─────────────────────────
+    // rAF-driven polling of audio.currentTime.  More reliable than the
+    // `timeupdate` event which browsers throttle inconsistently.
+    startHumanSyncLoop() {
+      if (this.voiceMode !== 'human') return;
+      this.stopHumanSyncLoop();
+      const tick = () => {
+        const audio = _dom.audio;
+        if (!audio || audio.paused) { _humanRaf = 0; return; }
+        const t = audio.currentTime;
+        this.elapsedSec  = t;
+        this.progress    = this.totalDuration ? (t / this.totalDuration) * 100 : 0;
+        this.timeElapsed = this.formatTime(t);
+        this.highlightWord(this.wordIdxAtTime(t));
+        _humanRaf = requestAnimationFrame(tick);
+      };
+      _humanRaf = requestAnimationFrame(tick);
+      console.log('[reader] human sync loop started');
+    },
+    stopHumanSyncLoop() {
+      if (_humanRaf) { cancelAnimationFrame(_humanRaf); _humanRaf = 0; }
     },
 
     // ── HIGHLIGHT ────────────────────────────────────
@@ -655,15 +792,23 @@ function immersiveReader() {
 
     highlightWord(idx) {
       if (idx === this.lastHighlighted) return;
-      if (this.lastHighlighted >= 0) this.allWords[this.lastHighlighted].el.classList.remove('active');
-      if (idx >= 0 && idx < this.allWords.length) {
-        this.allWords[idx].el.classList.add('active');
-        this.allWords[idx].el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const spans = _dom.wordSpans;
+      if (this.lastHighlighted >= 0 && spans[this.lastHighlighted]) {
+        spans[this.lastHighlighted].classList.remove('active');
+      }
+      if (idx >= 0 && idx < spans.length) {
+        const span = spans[idx];
+        span.classList.add('active');
+        span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         if (this.autoSpeed) {
           this.autoWordCount++;
           if (this.autoWordCount % 500 === 0) {
             this.speechRate = Math.min(this.speechRate + 0.1, 2.5);
-            this.startSpeech(this.allWords[idx].charStart);
+            if (this.voiceMode === 'tts') {
+              this.startSpeech(this.allWords[idx].charStart);
+            } else if (_dom.audio) {
+              _dom.audio.playbackRate = this.speechRate;
+            }
           }
         }
       }
@@ -671,7 +816,10 @@ function immersiveReader() {
     },
 
     clearHighlight() {
-      if (this.lastHighlighted >= 0) this.allWords[this.lastHighlighted].el.classList.remove('active');
+      const spans = _dom.wordSpans;
+      if (this.lastHighlighted >= 0 && spans[this.lastHighlighted]) {
+        spans[this.lastHighlighted].classList.remove('active');
+      }
       this.lastHighlighted = -1;
     },
 
@@ -706,7 +854,21 @@ function immersiveReader() {
     },
 
     togglePlay() {
-      if (!('speechSynthesis' in window)) { this.showToast('Not supported'); return; }
+      if (this.voiceMode === 'human') {
+        const audio = _dom.audio;
+        if (!audio) { this.showToast('Audio not ready'); return; }
+        if (audio.paused) {
+          audio.playbackRate = this.speechRate;
+          const p = audio.play();
+          if (p && p.catch) p.catch(err => this.showToast('Audio play blocked'));
+          this.demoRunning = true; this.tab = 'listen';
+        } else {
+          audio.pause();
+        }
+        return;
+      }
+      // TTS
+      if (!('speechSynthesis' in window)) { this.showToast('TTS not supported'); return; }
       if (this.playing) {
         window.speechSynthesis.pause(); this.playing = false; this.stopAudioTimer();
       } else if (window.speechSynthesis.paused) {
@@ -717,25 +879,66 @@ function immersiveReader() {
     },
 
     skipWords(n) {
-      const target = Math.max(0, Math.min(this.allWords.length - 1, this.lastHighlighted + n));
+      const current = this.lastHighlighted >= 0 ? this.lastHighlighted : 0;
+      const target = Math.max(0, Math.min(this.allWords.length - 1, current + n));
       this.jumpToWord(target);
     },
 
     jumpToWord(idx) {
       this.demoRunning = true;
       this.tab = 'listen';
-      this.startSpeech(this.allWords[idx].charStart);
+      if (this.voiceMode === 'human') {
+        const w = this.allWords[idx];
+        if (!w) return;
+        this.seekHumanAudio(w.start || 0, /*autoplay*/ true);
+        this.highlightWord(idx);
+      } else {
+        this.startSpeech(this.allWords[idx].charStart);
+      }
     },
 
-    // ── AUDIO TIMER ──────────────────────────────────
+    // Seek the human-voice audio, waiting for metadata if necessary.
+    // Some browsers silently drop currentTime assignments before loadedmetadata fires.
+    seekHumanAudio(time, autoplay) {
+      const audio = _dom.audio;
+      if (!audio) return;
+      const doSeek = () => {
+        try { audio.currentTime = time; } catch (e) { /* DOMException — not seekable yet */ }
+        audio.playbackRate = this.speechRate;
+        if (autoplay) {
+          const p = audio.play();
+          if (p && p.catch) p.catch(err => this.showToast('Audio play blocked — click play'));
+        }
+      };
+      if (audio.readyState >= 1) {
+        doSeek();
+      } else {
+        audio.addEventListener('loadedmetadata', doSeek, { once: true });
+        audio.load();
+      }
+    },
+
+    // Switch between mechanical TTS and human recording
+    setVoiceMode(mode) {
+      if (mode === this.voiceMode) return;
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      this.stopAudioTimer();
+      this.stopHumanSyncLoop();
+      if (_dom.audio) { _dom.audio.pause(); }
+      this.playing = false; this.demoRunning = false;
+      this.clearHighlight();
+      this.elapsedSec = 0; this.progress = 0; this.timeElapsed = '0:00';
+      this.voiceMode = mode;
+      this.showToast(mode === 'human' ? '🎙 Human narration' : '🤖 Machine voice (TTS)');
+    },
+
+    // ── AUDIO TIMER (TTS mode — simulates elapsed time while Web Speech speaks) ──
     startAudioTimer() {
       this.stopAudioTimer();
-      const totalSec = 818;
+      const totalSec = this.totalDuration || 818;
       this.audioTimer = setInterval(() => {
         this.elapsedSec = Math.min(this.elapsedSec + 0.25, totalSec);
-        const m = Math.floor(this.elapsedSec / 60);
-        const s = Math.floor(this.elapsedSec % 60).toString().padStart(2, '0');
-        this.timeElapsed = `${m}:${s}`;
+        this.timeElapsed = this.formatTime(this.elapsedSec);
         this.progress = (this.elapsedSec / totalSec) * 100;
       }, 250);
     },
@@ -744,13 +947,28 @@ function immersiveReader() {
     seekAudio(e) {
       const rect = e.currentTarget.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      this.elapsedSec = pct * 818;
+      if (this.voiceMode === 'human' && _dom.audio) {
+        const dur = this.totalDuration || _dom.audio.duration || 0;
+        this.seekHumanAudio(pct * dur, /*autoplay*/ !_dom.audio.paused);
+        return;
+      }
+      // TTS mode — seek by nearest word using timestamp approximation
+      const totalSec = this.totalDuration || 818;
+      this.elapsedSec = pct * totalSec;
       this.progress = pct * 100;
+      this.timeElapsed = this.formatTime(this.elapsedSec);
+      const targetTime = this.elapsedSec;
+      const idx = this.wordIdxAtTime(targetTime);
+      if (idx >= 0) this.startSpeech(this.allWords[idx].charStart);
     },
 
     // ── SPEED ────────────────────────────────────────
     setSpeed(rate) {
       this.speechRate = Math.max(0.5, Math.min(3.0, Math.round(rate * 10) / 10));
+      if (this.voiceMode === 'human') {
+        if (_dom.audio) _dom.audio.playbackRate = this.speechRate;
+        return;
+      }
       if (this.playing || window.speechSynthesis?.paused) {
         const from = this.lastHighlighted >= 0 ? this.allWords[this.lastHighlighted].charStart : this.utteranceOffset;
         this.startSpeech(from);
@@ -772,10 +990,25 @@ function immersiveReader() {
       this.demoRunning = !this.demoRunning;
       if (this.demoRunning) {
         this.tab = 'listen';
-        this.startSpeech(this.utteranceOffset || 0);
+        if (this.voiceMode === 'human') {
+          const audio = _dom.audio;
+          if (!audio) return;
+          audio.playbackRate = this.speechRate;
+          const p = audio.play();
+          if (p && p.catch) p.catch(() => this.showToast('Audio play blocked'));
+        } else {
+          this.startSpeech(this.utteranceOffset || 0);
+        }
       } else {
-        window.speechSynthesis.cancel();
-        this.playing = false; this.stopAudioTimer(); this.clearHighlight();
+        if (this.voiceMode === 'human' && _dom.audio) {
+          _dom.audio.pause();
+        } else {
+          window.speechSynthesis.cancel();
+        }
+        this.playing = false;
+        this.stopAudioTimer();
+        this.stopHumanSyncLoop();
+        this.clearHighlight();
       }
     },
 
