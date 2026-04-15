@@ -649,8 +649,12 @@ function immersiveReader() {
         this.renderParagraphs();
         this.buildWordSpans();
 
-        // If the API told us where the audio lives, point the <audio> there.
-        if (payload.audio_url && _dom.audio) {
+        // If the API told us where the audio lives, point the <audio> there —
+        // but only when running locally. On GitHub Pages the API's absolute
+        // path (e.g. /ALWAYS..._CH002.mp3) would resolve against the Pages
+        // origin and 404, so we keep the HTML's relative src instead.
+        const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+        if (isLocal && payload.audio_url && _dom.audio) {
           _dom.audio.src = payload.audio_url;
           _dom.audio.load();
         }
