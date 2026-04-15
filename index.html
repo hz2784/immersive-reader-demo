@@ -932,7 +932,10 @@ function immersiveReader() {
         if (audio.paused) {
           audio.playbackRate = this.speechRate;
           const p = audio.play();
-          if (p && p.catch) p.catch(err => this.showToast('Audio play blocked'));
+          if (p && p.catch) p.catch(err => {
+            console.error('Audio play failed:', err.name, err.message, 'src=', audio.currentSrc);
+            this.showToast(`Play failed: ${err.name}`);
+          });
           this.demoRunning = true; this.tab = 'listen';
         } else {
           audio.pause();

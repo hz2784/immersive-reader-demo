@@ -3,6 +3,11 @@
 An end-to-end prototype of word-synchronised audio reading, built on a
 PHP/Laravel/MySQL backend and an Alpine + Tailwind frontend.
 
+**[▶ Live demo (frontend only)](https://hz2784.github.io/immersive-reader-demo/)** — hosted on GitHub Pages.
+Falls back to a bundled JSON snapshot since the Laravel API can't run on
+GitHub Pages. To see the full stack (API + MySQL), clone and run locally
+(instructions below).
+
 - Click any word → audio seeks to that position
 - As audio plays, the current word is highlighted in real time
 - Human-voice narration (not browser TTS)
