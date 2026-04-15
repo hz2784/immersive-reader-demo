@@ -172,8 +172,8 @@
 <main class="flex-1 flex justify-center px-6 py-12 pb-36">
   <article class="bg-white w-[680px] max-w-full px-[76px] py-[60px] shadow-[0_2px_24px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] rounded-sm min-h-[640px]">
 
-    <p class="text-center font-serif text-[13px] italic text-muted mb-1.5 tracking-[0.02em]">Madison and The Bezzies</p>
-    <h1 class="text-center font-serif text-[30px] font-bold text-ink leading-tight mb-11">A New Beginning</h1>
+    <p class="text-center font-serif text-[13px] italic text-muted mb-1.5 tracking-[0.02em]">Chapter 2</p>
+    <h1 class="text-center font-serif text-[30px] font-bold text-ink leading-tight mb-11">Madison and the Bessies</h1>
 
     <!-- Book text — typography settings injected via Alpine :style -->
     <div id="bookText"
@@ -192,7 +192,7 @@
     </div>
 
     <!-- Hidden audio element for human-voice mode -->
-    <audio id="narrationAudio" preload="auto" src="./narration.mp3"></audio>
+    <audio id="narrationAudio" preload="auto" src="./ALWAYS_HERE_FOR_YOU_HALAHMY_CH002.mp3"></audio>
 
     <p class="text-center font-serif text-sm text-muted mt-11 tracking-[0.05em]">~ 10 ~</p>
   </article>
@@ -585,6 +585,11 @@ function immersiveReader() {
       this.renderParagraphs();
       this.buildWordSpans();
 
+      // 2b. Try to fetch fresh timings from the Laravel API.
+      //     If it works, replace the data and re-render. If it fails
+      //     (server down, CORS, 404, etc.), silently keep the local fallback.
+      this.refreshTimingsFromApi();
+
       // 3. Prepare TTS
       if ('speechSynthesis' in window) {
         this.chosenVoice = this.pickBestVoice();
@@ -626,11 +631,76 @@ function immersiveReader() {
       } catch(e) {}
     },
 
+    // Fetch timings from the Laravel backend. Non-destructive: on any failure
+    // the locally-loaded window.WORD_TIMINGS data stays in place.
+    API_BASE: 'http://127.0.0.1:8001/api',
+    CHAPTER_ID: 2,
+    async refreshTimingsFromApi() {
+      try {
+        const res = await fetch(`${this.API_BASE}/chapters/${this.CHAPTER_ID}/timings`);
+        if (!res.ok) return;
+        const payload = await res.json();
+        const data = payload.timings;
+        if (!data || !Array.isArray(data.paragraphs)) return;
+        this.paragraphs    = data.paragraphs;
+        this.totalDuration = data.duration || this.totalDuration;
+        this.totalTimeDisplay = this.formatTime(this.totalDuration);
+        this.timingsLoaded = true;
+        this.renderParagraphs();
+        this.buildWordSpans();
+
+        // If the API told us where the audio lives, point the <audio> there.
+        if (payload.audio_url && _dom.audio) {
+          _dom.audio.src = payload.audio_url;
+          _dom.audio.load();
+        }
+
+        this.showToast('Loaded timings from API');
+      } catch (e) {
+        // Network / CORS error — silently keep the local fallback.
+      }
+    },
+
+    // Paragraph 0 often contains the chapter heading merged into the body
+    // (e.g. "Chapter 2. Madison and the Bessies It was still raining..."). The
+    // styled heading is already rendered statically above — so strip those
+    // leading words (and their timings) from paragraph 0 here.
+    stripHeadingFromFirstParagraph() {
+      if (!this.paragraphs.length) return;
+      const first = this.paragraphs[0];
+      if (first._headingStripped || !Array.isArray(first.words) || first.words.length < 3) return;
+      const tokens = first.words.map(w => w.text);
+      if (!/^Chapter$/i.test(tokens[0])) return;
+      if (!/^\d+\.?$/.test(tokens[1])) return;
+
+      const SMALL = new Set(['and','the','of','a','an','in','on','at','with','to','from']);
+      let titleEnd = 2;
+      while (titleEnd < tokens.length) {
+        const t = tokens[titleEnd];
+        const cap = /^[A-Z]/.test(t);
+        const small = SMALL.has(t.toLowerCase());
+        if (!cap && !small) break;
+        // A capital word followed by a lowercase non-connective starts a new
+        // sentence → title has ended.
+        if (cap && titleEnd + 1 < tokens.length) {
+          const nx = tokens[titleEnd + 1];
+          if (!/^[A-Z]/.test(nx) && !SMALL.has(nx.toLowerCase())) break;
+        }
+        titleEnd++;
+      }
+      if (titleEnd < 3) return;
+
+      first.words = first.words.slice(titleEnd);
+      first.text = first.words.map(w => w.text).join(' ');
+      first._headingStripped = true;
+    },
+
     // Create a <p> element per paragraph so existing CSS/typography still applies
     renderParagraphs() {
       const container = document.getElementById('bookParagraphs');
       if (!container) return;
       container.innerHTML = '';
+      this.stripHeadingFromFirstParagraph();
       this.paragraphs.forEach((p, i) => {
         const el = document.createElement('p');
         el.id = p.id;
@@ -704,6 +774,8 @@ function immersiveReader() {
       // by Alpine's reactive Proxy — this is critical for reliable classList /
       // currentTime access during playback.
       _dom.wordSpans.length = 0;
+      this.allWords = [];
+      this.fullText = '';
       this.paragraphs.forEach((p, pi) => {
         if (pi > 0) this.fullText += '\n\n';
         const el = document.getElementById(p.id);

@@ -2,3 +2,8 @@
 node_modules/
 __pycache__/
 *.pyc
+
+# Python virtualenv for alignment scripts
+alignment/venv/
+
+# Laravel backend's own .gitignore handles reader-api/vendor, .env, etc.
